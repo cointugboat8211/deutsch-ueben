@@ -160,10 +160,10 @@ function renderSetup(container, reason) {
     </div>`;
   container.querySelector("#back").onclick = () => navigate("dashboard");
   container.querySelector("#retry").onclick = () => render(container, {});
-  container.querySelector("#use-local").onclick = () => {
+  container.querySelector("#use-local")?.addEventListener("click", () => {
     setOllamaBase(null);
     render(container, {});
-  };
+  });
   container.querySelector("#connect-remote").onclick = async () => {
     const url = container.querySelector("#remote-url").value.trim().replace(/\/+$/, "");
     const status = container.querySelector("#remote-status");
