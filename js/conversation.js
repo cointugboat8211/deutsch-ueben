@@ -191,14 +191,14 @@ function renderPlay(container, dialogueId) {
   async function startListening(node) {
     listening = true;
     renderControls(container.querySelector("#controls"));
-    const { transcript, error } = await listenOnce({ timeoutMs: 8000 });
+    const { transcript, alternatives, error } = await listenOnce({ timeoutMs: 8000 });
     listening = false;
     if (!transcript) {
       renderControls(container.querySelector("#controls"));
       showToast(micErrorMessage(error));
       return;
     }
-    handleUserAttempt(node, transcript);
+    handleUserAttempt(node, transcript, alternatives);
   }
 
   function submitText(node, text) {
@@ -206,9 +206,13 @@ function renderPlay(container, dialogueId) {
     handleUserAttempt(node, text.trim());
   }
 
-  function handleUserAttempt(node, text) {
+  // `alternatives` holds up to 3 speech-recognition guesses ranked by
+  // confidence — the top one (shown in the chat log) isn't always the
+  // accurate one, so any of them matching counts.
+  function handleUserAttempt(node, text, alternatives) {
     log.push({ who: "user", text });
-    const matched = node.responses.find((r) => matchesExpected(text, r.variants));
+    const candidates = alternatives?.length ? alternatives : [text];
+    const matched = node.responses.find((r) => candidates.some((c) => matchesExpected(c, r.variants)));
     if (matched) {
       currentNodeId = matched.next;
       enterNode();

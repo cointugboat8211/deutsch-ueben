@@ -130,15 +130,18 @@ function renderPlayer(container, lessonId) {
     const done = lesson.items.map(() => false);
 
     const wordRow = (it, idx) => `
-      <div class="word-row" data-idx="${idx}" style="margin-bottom:8px;">
-        <button class="speak-btn" data-say="${esc(it.de)}" title="Listen">🔊</button>
-        <span class="de">${esc(it.de)}</span>
-        <span class="en revealed" style="margin-left:auto; text-align:right;">${esc(it.en)}${it.note ? `<br><span class="sub" style="font-size:.75rem;">${esc(it.note)}</span>` : ""}</span>
-        ${
-          gated
-            ? `<button class="speak-btn" data-mic-idx="${idx}" title="Say it">🎤</button><span class="gate-status" data-status-idx="${idx}" title="Not said yet">·</span>`
-            : ""
-        }
+      <div data-row-idx="${idx}" style="margin-bottom:8px;">
+        <div class="word-row" data-idx="${idx}">
+          <button class="speak-btn" data-say="${esc(it.de)}" title="Listen">🔊</button>
+          <span class="de">${esc(it.de)}</span>
+          <span class="en revealed" style="margin-left:auto; text-align:right;">${esc(it.en)}${it.note ? `<br><span class="sub" style="font-size:.75rem;">${esc(it.note)}</span>` : ""}</span>
+          ${
+            gated
+              ? `<button class="speak-btn" data-mic-idx="${idx}" title="Say it">🎤</button><span class="gate-status" data-status-idx="${idx}" title="Not said yet">·</span>`
+              : ""
+          }
+        </div>
+        ${gated ? `<p class="sub" data-heard-idx="${idx}" style="margin:4px 0 0 52px; font-size:.82rem;"></p>` : ""}
       </div>`;
 
     const sentenceRow = (it) => `
@@ -191,22 +194,32 @@ function renderPlayer(container, lessonId) {
       const idx = Number(btn.dataset.micIdx);
       const it = lesson.items[idx];
       const statusEl = container.querySelector(`[data-status-idx="${idx}"]`);
+      const heardEl = container.querySelector(`[data-heard-idx="${idx}"]`);
       btn.onclick = async () => {
         btn.classList.add("listening");
         statusEl.textContent = "…";
         statusEl.title = "Listening";
-        const { transcript, error } = await listenOnce({ timeoutMs: 6000 });
+        heardEl.textContent = "Listening…";
+        const { transcript, alternatives, error } = await listenOnce({ timeoutMs: 6000 });
         btn.classList.remove("listening");
         if (!transcript) {
           statusEl.textContent = "❌";
-          statusEl.title = micErrorMessage(error);
+          statusEl.title = "Didn't catch anything";
+          heardEl.textContent = micErrorMessage(error);
           return;
         }
-        if (matchesExpected(transcript, [it.de])) {
+        // Speech recognition returns up to 3 guesses ranked by confidence; the
+        // top one isn't always the accurate one, so check all of them rather
+        // than rejecting a correct answer just because it ranked 2nd or 3rd.
+        const candidates = alternatives?.length ? alternatives : [transcript];
+        const matchedOn = candidates.find((c) => matchesExpected(c, [it.de]));
+        if (matchedOn) {
           markDone(idx);
+          heardEl.textContent = `Heard: “${matchedOn}” ✓`;
         } else {
           statusEl.textContent = "❌";
-          statusEl.title = `Heard "${transcript}" — try again`;
+          statusEl.title = "Not quite — try again";
+          heardEl.textContent = `Heard: “${transcript}” — not quite. Try again, a bit slower or closer to the mic.`;
         }
       };
     });
@@ -465,8 +478,11 @@ function renderPlayer(container, lessonId) {
     const mic = container.querySelector("#mic");
     const heardEl = container.querySelector("#heard");
 
-    const evaluate = (transcript) => {
-      const ok = matchesExpected(transcript, [ex.target]);
+    // `candidates` may hold several speech-recognition guesses ranked by
+    // confidence — the top one isn't always the accurate one, so any match
+    // counts, not just the first.
+    const evaluate = (candidates) => {
+      const ok = candidates.some((c) => matchesExpected(c, [ex.target]));
       if (ok) finish(ex, true);
       else heardEl.textContent += " — not quite, try again or skip.";
     };
@@ -475,7 +491,7 @@ function renderPlayer(container, lessonId) {
       const val = container.querySelector("#typed-speak").value.trim();
       if (!val) return;
       heardEl.textContent = `You typed: “${val}”`;
-      evaluate(val);
+      evaluate([val]);
     };
     container.querySelector("#typed-speak").addEventListener("keydown", (e) => {
       if (e.key === "Enter") container.querySelector("#submit-speak").click();
@@ -485,14 +501,14 @@ function renderPlayer(container, lessonId) {
     mic.onclick = async () => {
       mic.classList.add("listening");
       heardEl.textContent = "Listening…";
-      const { transcript, error } = await listenOnce({ timeoutMs: 8000 });
+      const { transcript, alternatives, error } = await listenOnce({ timeoutMs: 8000 });
       mic.classList.remove("listening");
       if (!transcript) {
         heardEl.textContent = micErrorMessage(error);
         return;
       }
       heardEl.textContent = `You said: “${transcript}”`;
-      evaluate(transcript);
+      evaluate(alternatives?.length ? alternatives : [transcript]);
     };
   }
 
