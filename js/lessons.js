@@ -124,26 +124,92 @@ function renderPlayer(container, lessonId) {
 
   // ---- teach screen ----
   function showTeach() {
-    const row = (it) => `
-      <div class="word-row" style="margin-bottom:8px;">
+    // When a mic is available, require saying each new word correctly before
+    // "Start practice" unlocks — an explicit warm-up, not just passive reading.
+    const gated = canSpeak;
+    const done = lesson.items.map(() => false);
+
+    const wordRow = (it, idx) => `
+      <div class="word-row" data-idx="${idx}" style="margin-bottom:8px;">
         <button class="speak-btn" data-say="${esc(it.de)}" title="Listen">🔊</button>
         <span class="de">${esc(it.de)}</span>
         <span class="en revealed" style="margin-left:auto; text-align:right;">${esc(it.en)}${it.note ? `<br><span class="sub" style="font-size:.75rem;">${esc(it.note)}</span>` : ""}</span>
+        ${
+          gated
+            ? `<button class="speak-btn" data-mic-idx="${idx}" title="Say it">🎤</button><span class="gate-status" data-status-idx="${idx}" title="Not said yet">·</span>`
+            : ""
+        }
       </div>`;
+
+    const sentenceRow = (it) => `
+      <div class="word-row" style="margin-bottom:8px;">
+        <button class="speak-btn" data-say="${esc(it.de)}" title="Listen">🔊</button>
+        <span class="de">${esc(it.de)}</span>
+        <span class="en revealed" style="margin-left:auto; text-align:right;">${esc(it.en)}</span>
+      </div>`;
+
     container.innerHTML = `
       <button class="back-link" id="exit">&larr; Back to lessons</button>
       <h1>${esc(lesson.title)}</h1>
-      <p class="sub">Read and listen first, then practice. Tap 🔊 to hear each one.</p>
+      <p class="sub">${gated ? "Read and listen first, then say each new word correctly to unlock the lesson." : "Read and listen first, then practice."} Tap 🔊 to hear each one.</p>
       <div class="card">
-        <h2>New words</h2>
-        ${lesson.items.map(row).join("")}
-        ${(lesson.sentences || []).length ? `<h2 style="margin-top:18px;">Phrases</h2>${lesson.sentences.map(row).join("")}` : ""}
+        <h2>New words${gated ? ` <span class="sub" id="gate-progress" style="font-weight:400;">— 0 / ${lesson.items.length} said</span>` : ""}</h2>
+        ${lesson.items.map(wordRow).join("")}
+        ${(lesson.sentences || []).length ? `<h2 style="margin-top:18px;">Phrases</h2>${lesson.sentences.map(sentenceRow).join("")}` : ""}
       </div>
       ${hasVoice ? "" : `<p class="sub">No German voice found, so listening exercises are skipped. See the warning at the top for how to add one.</p>`}
-      <button class="btn" id="start">Start practice</button>`;
+      <div class="row">
+        <button class="btn" id="start" ${gated ? "disabled" : ""}>Start practice</button>
+        ${gated ? `<button class="btn ghost" id="skip-gate">Mic not cooperating? Skip the warm-up</button>` : ""}
+      </div>`;
     container.querySelector("#exit").onclick = () => navigate("lessons");
     container.querySelectorAll("[data-say]").forEach((b) => (b.onclick = () => say(b.dataset.say)));
     container.querySelector("#start").onclick = () => showExercise();
+    container.querySelector("#skip-gate")?.addEventListener("click", (e) => {
+      container.querySelector("#start").disabled = false;
+      e.target.remove();
+    });
+
+    if (!gated) return;
+
+    function markDone(idx) {
+      done[idx] = true;
+      const statusEl = container.querySelector(`[data-status-idx="${idx}"]`);
+      if (statusEl) {
+        statusEl.textContent = "✅";
+        statusEl.title = "Said correctly";
+      }
+      container.querySelector(`[data-idx="${idx}"]`)?.classList.add("done-row");
+      container.querySelector(`[data-mic-idx="${idx}"]`)?.setAttribute("disabled", "true");
+      const count = done.filter(Boolean).length;
+      const progress = container.querySelector("#gate-progress");
+      if (progress) progress.textContent = `— ${count} / ${lesson.items.length} said`;
+      if (count === lesson.items.length) container.querySelector("#start").disabled = false;
+    }
+
+    container.querySelectorAll("[data-mic-idx]").forEach((btn) => {
+      const idx = Number(btn.dataset.micIdx);
+      const it = lesson.items[idx];
+      const statusEl = container.querySelector(`[data-status-idx="${idx}"]`);
+      btn.onclick = async () => {
+        btn.classList.add("listening");
+        statusEl.textContent = "…";
+        statusEl.title = "Listening";
+        const { transcript, error } = await listenOnce({ timeoutMs: 6000 });
+        btn.classList.remove("listening");
+        if (!transcript) {
+          statusEl.textContent = "❌";
+          statusEl.title = micErrorMessage(error);
+          return;
+        }
+        if (matchesExpected(transcript, [it.de])) {
+          markDone(idx);
+        } else {
+          statusEl.textContent = "❌";
+          statusEl.title = `Heard "${transcript}" — try again`;
+        }
+      };
+    });
   }
 
   // ---- shared frame ----

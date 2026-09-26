@@ -340,6 +340,11 @@ p.sub { color: var(--text-dim); margin-top: 0; }
 .word-row .status.known { background: var(--good); }
 .word-row .status.learning { background: var(--accent); }
 
+/* Pronunciation gate on the lesson teach screen */
+.word-row.done-row { border-color: var(--good); background: rgba(76,175,109,0.08); }
+.gate-status { font-size: 1.1rem; width: 22px; text-align: center; flex-shrink: 0; }
+.speak-btn.listening { animation: pulse 1.2s infinite; border-color: var(--bad); color: var(--bad); }
+
 .tabs { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
 .tab {
   background: var(--panel-2);
