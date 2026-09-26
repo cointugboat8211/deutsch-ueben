@@ -4,7 +4,7 @@
 import { getState } from "./storage.js";
 import { learnerVocabulary, wordSet } from "./vocab.js";
 import { levelLabels } from "./data/assessment-data.js";
-import { speakGerman, speechRecognitionSupported, listenOnce, stopListening } from "./speech.js";
+import { speakGerman, speechRecognitionSupported, listenOnce, stopListening, micErrorMessage } from "./speech.js";
 import { navigate, showToast } from "./router.js";
 
 const DEFAULT_OLLAMA = "http://localhost:11434";
@@ -314,7 +314,7 @@ function renderChat(container, installed, params = {}) {
     listening = false;
     drawControls();
     if (!transcript) {
-      showToast(error === "no-speech" || error === "timeout" ? "Didn't catch that — try again" : "Mic error — try typing instead");
+      showToast(micErrorMessage(error));
       return;
     }
     send(transcript);

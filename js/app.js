@@ -8,6 +8,7 @@ import * as conversationView from "./conversation.js";
 import * as readingView from "./reading.js";
 import * as aiChatView from "./aichat.js";
 import * as lessonsView from "./lessons.js";
+import * as voiceSettingsView from "./voicesettings.js";
 import { allLessons } from "./data/lessons-data.js";
 import { getLessonProgress, getStreak, getXP } from "./storage.js";
 import { getDueReviewItems } from "./vocab.js";
@@ -22,6 +23,7 @@ const views = {
   reading: readingView.render,
   aichat: aiChatView.render,
   lessons: lessonsView.render,
+  voice: voiceSettingsView.render,
 };
 
 function renderView(view, params = {}) {
@@ -69,6 +71,11 @@ function renderDashboard(container) {
       </div>
     </div>
 
+    <div class="row between" style="margin: -8px 0 16px;">
+      <span></span>
+      <button class="btn ghost" id="voice-settings-link">🔊 German sound robotic? Change the voice</button>
+    </div>
+
     <button class="big-action" id="lessons-btn" style="width:100%; margin-bottom:16px; border-color:var(--accent);">
       <div class="icon">🎓</div>
       <div class="title">Lessons — learn step by step</div>
@@ -96,6 +103,7 @@ function renderDashboard(container) {
   `;
 
   container.querySelector("#assess-btn").onclick = () => navigate("assessment", { mode: "intro" });
+  container.querySelector("#voice-settings-link").onclick = () => navigate("voice");
   container.querySelector("#lessons-btn").onclick = () => navigate("lessons");
   container.querySelector("#conv-btn").onclick = () => navigate("conversation");
   container.querySelector("#read-btn").onclick = () => navigate("reading");
@@ -112,10 +120,12 @@ notice.style.cssText = "background:#3a2a0a;border-bottom:1px solid var(--accent)
 notice.innerHTML = `
   <strong>⚠️ No German voice found.</strong> German would be read with an English voice, which teaches the wrong pronunciation.
   <strong>Fix:</strong> open this app in <strong>Microsoft Edge</strong> (it has free, natural German voices; needs internet),
-  or in Windows go to <em>Settings → Time &amp; language → Language &amp; region → Add a language → Deutsch</em>, make sure
-  <em>Text-to-speech</em> is ticked, then fully restart your browser.
+  or in Windows go to <em>Settings → Time &amp; language → Speech → Manage voices → Add voices → Deutsch</em>
+  (look for one tagged <em>Natural</em>), then fully restart your browser.
+  <button class="btn ghost" id="voice-page-link">Voice settings</button>
   <button class="btn ghost" id="voice-dismiss">Dismiss</button>`;
 appEl.before(notice);
+notice.querySelector("#voice-page-link").onclick = () => navigate("voice");
 notice.querySelector("#voice-dismiss").onclick = () => {
   notice.hidden = true;
   try { sessionStorage.setItem("voiceNoticeDismissed", "1"); } catch {}

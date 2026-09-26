@@ -11,6 +11,7 @@ import {
   matchesTyped,
   normalizeGerman,
   germanVoices,
+  micErrorMessage,
 } from "./speech.js";
 import { navigate } from "./router.js";
 
@@ -386,28 +387,46 @@ function renderPlayer(container, lessonId) {
   // ---- speaking ----
   function renderSpeak(ex) {
     frame(ex, `${bigWithSpeaker(ex)}<p class="sub">${esc(ex.sub || "")}</p>
-      <div class="row" style="justify-content:center;"><button class="mic-btn" id="mic">🎤</button></div>
-      <p class="sub" id="heard" style="text-align:center;">Tap the mic and say it in German</p>`);
+      <div class="row" style="justify-content:center;"><button class="mic-btn" id="mic" ${speechRecognitionSupported() ? "" : "disabled"}>🎤</button></div>
+      <p class="sub" id="heard" style="text-align:center;">${speechRecognitionSupported() ? "Tap the mic and say it in German" : "Speech recognition needs Chrome or Edge — type it instead"}</p>
+      <div class="text-fallback" style="margin-top:14px;">
+        <input type="text" id="typed-speak" placeholder="Or type it here instead…" autocomplete="off" />
+        <button class="btn secondary" id="submit-speak">Check</button>
+      </div>`);
     container.querySelector("#hear")?.addEventListener("click", () => say(ex.speak));
     actions(`<button class="btn ghost" id="skip">Can't speak right now</button>`);
     container.querySelector("#skip").onclick = () => finish(ex, true, true);
     const mic = container.querySelector("#mic");
     const heardEl = container.querySelector("#heard");
+
+    const evaluate = (transcript) => {
+      const ok = matchesExpected(transcript, [ex.target]);
+      if (ok) finish(ex, true);
+      else heardEl.textContent += " — not quite, try again or skip.";
+    };
+
+    container.querySelector("#submit-speak").onclick = () => {
+      const val = container.querySelector("#typed-speak").value.trim();
+      if (!val) return;
+      heardEl.textContent = `You typed: “${val}”`;
+      evaluate(val);
+    };
+    container.querySelector("#typed-speak").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") container.querySelector("#submit-speak").click();
+    });
+
+    if (!mic) return;
     mic.onclick = async () => {
       mic.classList.add("listening");
       heardEl.textContent = "Listening…";
-      const { transcript } = await listenOnce({ timeoutMs: 8000 });
+      const { transcript, error } = await listenOnce({ timeoutMs: 8000 });
       mic.classList.remove("listening");
       if (!transcript) {
-        heardEl.textContent = "Didn't catch that. Tap the mic and try again.";
+        heardEl.textContent = micErrorMessage(error);
         return;
       }
       heardEl.textContent = `You said: “${transcript}”`;
-      const ok = matchesExpected(transcript, [ex.target]);
-      if (ok) finish(ex, true);
-      else {
-        heardEl.textContent += " — not quite, try again or skip.";
-      }
+      evaluate(transcript);
     };
   }
 

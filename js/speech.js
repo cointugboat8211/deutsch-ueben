@@ -3,6 +3,8 @@
 let germanVoice = null;
 let voicesReady = false;
 const voiceListeners = [];
+const VOICE_KEY = "deutschUeben_voiceName";
+const RATE_KEY = "deutschUeben_speechRate";
 
 // Prefer natural/online neural voices (Edge "Natural", Google) over the old robotic ones.
 function rankVoice(v) {
@@ -18,7 +20,12 @@ export function germanVoices() {
 function loadVoices() {
   const voices = window.speechSynthesis?.getVoices() || [];
   if (voices.length) {
-    germanVoice = germanVoices()[0] || null;
+    const all = germanVoices();
+    let saved;
+    try {
+      saved = localStorage.getItem(VOICE_KEY);
+    } catch {}
+    germanVoice = (saved && all.find((v) => v.name === saved)) || all[0] || null;
     voicesReady = true;
   }
   voiceListeners.forEach((cb) => cb(germanVoice));
@@ -30,23 +37,68 @@ export function onVoiceStatus(cb) {
   if (voicesReady) cb(germanVoice);
 }
 
+export function getSelectedVoice() {
+  return germanVoice;
+}
+
+// Remembers a specific voice by name (picked on the Voice settings screen) so
+// it's used everywhere instead of the automatic best-guess. Pass null to go
+// back to automatic.
+export function setSelectedVoice(voiceName) {
+  try {
+    if (voiceName) localStorage.setItem(VOICE_KEY, voiceName);
+    else localStorage.removeItem(VOICE_KEY);
+  } catch {}
+  loadVoices();
+}
+
+export function getSpeechRate() {
+  try {
+    return parseFloat(localStorage.getItem(RATE_KEY)) || 0.88;
+  } catch {
+    return 0.88;
+  }
+}
+
+export function setSpeechRate(rate) {
+  try {
+    localStorage.setItem(RATE_KEY, String(rate));
+  } catch {}
+}
+
 if (typeof window !== "undefined" && window.speechSynthesis) {
   loadVoices();
   window.speechSynthesis.onvoiceschanged = loadVoices;
 }
 
-export function speakGerman(text, { rate = 0.88 } = {}) {
+export function speakGerman(text, { rate, voice } = {}) {
   return new Promise((resolve) => {
     if (!window.speechSynthesis) return resolve(false);
     if (!voicesReady) loadVoices();
-    window.speechSynthesis.cancel();
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.lang = "de-DE";
-    utter.rate = rate;
-    if (germanVoice) utter.voice = germanVoice;
-    utter.onend = () => resolve(true);
-    utter.onerror = () => resolve(false);
-    window.speechSynthesis.speak(utter);
+    try {
+      window.speechSynthesis.cancel();
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = "de-DE";
+      utter.rate = rate ?? getSpeechRate();
+      // Some browsers refresh their internal voice list (after 'voiceschanged'
+      // or a device/audio-output change) and then reject a voice object held
+      // over from before that refresh — assigning it throws SYNCHRONOUSLY
+      // ("Failed to convert value to 'SpeechSynthesisVoice'"), which would
+      // otherwise escape this Promise uncaught and break whatever called us.
+      const useVoice = voice || germanVoice;
+      if (useVoice) {
+        try {
+          utter.voice = useVoice;
+        } catch {
+          loadVoices(); // refresh our cached voice against the current list
+        }
+      }
+      utter.onend = () => resolve(true);
+      utter.onerror = () => resolve(false);
+      window.speechSynthesis.speak(utter);
+    } catch {
+      resolve(false);
+    }
   });
 }
 
@@ -75,6 +127,23 @@ export function listenOnce({ timeoutMs = 8000 } = {}) {
   return new Promise((resolve) => {
     if (!SpeechRecognitionCtor) return resolve({ transcript: "", error: "unsupported" });
 
+    // Starting microphone capture while text-to-speech audio is still playing
+    // (or queued) can hang or crash the tab on some systems — audio drivers
+    // and virtual devices in particular don't always cope with playback and
+    // capture starting at the same instant. Fully stop any TTS first and
+    // give the audio device a brief moment to settle before opening the mic.
+    window.speechSynthesis?.cancel();
+
+    const start = () => startRecognition(resolve, timeoutMs);
+    if (window.speechSynthesis?.speaking || window.speechSynthesis?.pending) {
+      setTimeout(start, 200);
+    } else {
+      start();
+    }
+  });
+}
+
+function startRecognition(resolve, timeoutMs) {
     const recognizer = new SpeechRecognitionCtor();
     activeRecognizer = recognizer;
     recognizer.lang = "de-DE";
@@ -110,12 +179,43 @@ export function listenOnce({ timeoutMs = 8000 } = {}) {
       finish({ transcript: "", error: "no-speech" });
     };
 
-    try {
-      recognizer.start();
-    } catch (e) {
-      finish({ transcript: "", error: "start-failed" });
-    }
-  });
+    // Chrome/Edge sometimes throw synchronously if a previous recognition
+    // session hasn't fully released the microphone yet (common right after a
+    // prior attempt just ended) — one short retry clears this almost always,
+    // rather than leaving the mic looking "stuck" until the page is reloaded.
+    const tryStart = (isRetry) => {
+      try {
+        recognizer.start();
+      } catch (e) {
+        if (!isRetry) setTimeout(() => tryStart(true), 350);
+        else finish({ transcript: "", error: "start-failed" });
+      }
+    };
+    tryStart(false);
+}
+
+// Turns a recognition error code into a message that actually explains what
+// to do next, instead of a generic "didn't catch that" for every failure.
+export function micErrorMessage(error) {
+  switch (error) {
+    case "not-allowed":
+    case "service-not-allowed":
+      return "Microphone access is blocked for this site. Click the 🔒 or camera/mic icon in the address bar, allow the microphone, then try again.";
+    case "audio-capture":
+      return "No microphone found. Check one is connected and not in use by another app.";
+    case "network":
+      return "Speech recognition needs an internet connection.";
+    case "aborted":
+    case "start-failed":
+      return "The microphone got stuck for a moment. Try again — if it keeps happening, reload the page.";
+    case "unsupported":
+      return "Speech recognition isn't available in this browser. Chrome or Edge work best — or just type instead.";
+    case "no-speech":
+    case "timeout":
+      return "Didn't hear anything. Tap the mic and try again, a little closer or louder.";
+    default:
+      return "Something went wrong with the microphone. Try again, or type instead.";
+  }
 }
 
 export function stopListening() {

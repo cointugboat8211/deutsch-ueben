@@ -6,6 +6,7 @@ import {
   listenOnce,
   stopListening,
   matchesExpected,
+  micErrorMessage,
 } from "./speech.js";
 import { navigate, showToast } from "./router.js";
 
@@ -194,7 +195,7 @@ function renderPlay(container, dialogueId) {
     listening = false;
     if (!transcript) {
       renderControls(container.querySelector("#controls"));
-      showToast(error === "no-speech" || error === "timeout" ? "Didn't catch that — try again" : "Mic error — try typing instead");
+      showToast(micErrorMessage(error));
       return;
     }
     handleUserAttempt(node, transcript);
