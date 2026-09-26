@@ -1,7 +1,7 @@
 // Optional: let the local AI model (Ollama) write placement questions at the
 // difficulty the adaptive test is currently probing.
 
-import { OLLAMA, listModels, pickModel } from "./aichat.js";
+import { getOllamaBase, listModels, pickModel } from "./aichat.js";
 import { DIFFICULTY_LABELS } from "./data/assessment-data.js";
 
 const TOPICS = [
@@ -46,7 +46,7 @@ Rules:
 Reply with ONLY JSON: {"prompt": "...", "correct": "...", "wrong": ["...", "...", "..."]}`;
 
   try {
-    const res = await fetch(`${OLLAMA}/api/chat`, {
+    const res = await fetch(`${getOllamaBase()}/api/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       signal: AbortSignal.timeout(20000),

@@ -7,9 +7,34 @@ import { levelLabels } from "./data/assessment-data.js";
 import { speakGerman, speechRecognitionSupported, listenOnce, stopListening } from "./speech.js";
 import { navigate, showToast } from "./router.js";
 
-export const OLLAMA = "http://localhost:11434";
+const DEFAULT_OLLAMA = "http://localhost:11434";
+const OLLAMA_KEY = "deutschUeben_ollamaBase";
 const PREFERRED_MODELS = ["qwen2.5:14b", "gemma3:12b", "gemma2:9b", "qwen2.5:7b", "llama3.1:8b", "qwen2.5:3b", "llama3.2:3b", "mistral"];
 const MODEL_KEY = "deutschUeben_model";
+
+// The Ollama server to talk to. Defaults to this device's own localhost (the
+// normal case: app and Ollama on the same computer). On a phone or any other
+// device, localhost means the PHONE, not your computer, so it can be pointed
+// instead at your computer's Tailscale address (see the setup screen) to use
+// the same free local AI tutor from anywhere your computer is reachable.
+export function getOllamaBase() {
+  try {
+    return (localStorage.getItem(OLLAMA_KEY) || DEFAULT_OLLAMA).replace(/\/$/, "");
+  } catch {
+    return DEFAULT_OLLAMA;
+  }
+}
+
+export function setOllamaBase(url) {
+  try {
+    if (!url || url === DEFAULT_OLLAMA) localStorage.removeItem(OLLAMA_KEY);
+    else localStorage.setItem(OLLAMA_KEY, url.trim().replace(/\/$/, ""));
+  } catch {}
+}
+
+export function isRemoteOllama() {
+  return getOllamaBase() !== DEFAULT_OLLAMA;
+}
 
 const TOPIC_LABELS = { lessons: "My lessons", free: "Free chat", intro: "Introductions", cafe: "At the café", shopping: "Shopping", directions: "Directions", daily: "Daily life" };
 
@@ -69,7 +94,7 @@ Never put anything outside the JSON.`;
 }
 
 export async function listModels() {
-  const res = await fetch(`${OLLAMA}/api/tags`, { signal: AbortSignal.timeout(2500) });
+  const res = await fetch(`${getOllamaBase()}/api/tags`, { signal: AbortSignal.timeout(isRemoteOllama() ? 6000 : 2500) });
   if (!res.ok) throw new Error("bad status");
   const data = await res.json();
   return (data.models || []).map((m) => m.name);
@@ -103,6 +128,8 @@ export async function render(container, params = {}) {
 }
 
 function renderSetup(container, reason) {
+  const currentBase = getOllamaBase();
+  const remote = isRemoteOllama();
   container.innerHTML = `
     <button class="back-link" id="back">&larr; Back</button>
     <h1>AI Tutor 🤖</h1>
@@ -120,9 +147,41 @@ function renderSetup(container, reason) {
       <p class="sub">Prefer something smaller/faster? <code>ollama pull qwen2.5:3b</code> (1.9 GB) works too, just a bit less accurate.</p>
       <h2 style="margin-top:18px;">${reason === "no-model" ? "Then" : "3. Come back"}</h2>
       <button class="btn" id="retry">I've done it — check again</button>
+    </div>
+    <div class="card">
+      <h2>On this device, use a computer elsewhere</h2>
+      <p class="sub">If Ollama is already set up on your own computer and it's reachable over Tailscale (or the same network), enter its address here instead of installing anything on this device.</p>
+      <div class="text-fallback">
+        <input type="text" id="remote-url" placeholder="https://your-computer.tailXXXXX.ts.net" autocomplete="off" value="${escapeHtml(remote ? currentBase : "")}" />
+        <button class="btn" id="connect-remote">Connect</button>
+      </div>
+      ${remote ? `<p class="sub" style="margin-top:10px;">Currently trying: ${escapeHtml(currentBase)} — <button class="btn ghost" id="use-local" style="padding:0;">use this device's own Ollama instead</button></p>` : ""}
+      <p id="remote-status" class="sub" style="margin-top:10px;"></p>
     </div>`;
   container.querySelector("#back").onclick = () => navigate("dashboard");
   container.querySelector("#retry").onclick = () => render(container, {});
+  container.querySelector("#use-local").onclick = () => {
+    setOllamaBase(null);
+    render(container, {});
+  };
+  container.querySelector("#connect-remote").onclick = async () => {
+    const url = container.querySelector("#remote-url").value.trim().replace(/\/+$/, "");
+    const status = container.querySelector("#remote-status");
+    if (!url) return;
+    status.textContent = "Connecting…";
+    setOllamaBase(url);
+    try {
+      const installed = await listModels();
+      if (!installed.length) {
+        status.textContent = "Connected, but that computer has no AI model downloaded yet.";
+        return;
+      }
+      render(container, {});
+    } catch {
+      status.textContent = "Couldn't reach that address. Check it's typed correctly and that computer is on and connected.";
+      setOllamaBase(null);
+    }
+  };
 }
 
 function renderChat(container, installed, params = {}) {
@@ -141,7 +200,9 @@ function renderChat(container, installed, params = {}) {
       <button class="back-link" id="back">&larr; Back</button>
       <div class="row between">
         <div><h1 style="margin:0">AI Tutor 🤖</h1>
-        <p class="sub" style="margin:4px 0 0;">Level: ${levelLabels[level] || "Complete Beginner"} · model: ${escapeHtml(model)}</p>
+        <p class="sub" style="margin:4px 0 0;">Level: ${levelLabels[level] || "Complete Beginner"} · model: ${escapeHtml(model)}
+          · ${isRemoteOllama() ? `🌐 ${escapeHtml(getOllamaBase().replace(/^https?:\/\//, ""))}` : "💻 this device"}
+          <button class="btn ghost" id="change-server" style="padding:0;">change</button></p>
         <p class="sub" style="margin:2px 0 0;" title="${escapeHtml(vocab.review.map((w) => w.de).join(", "))}">${
           vocab.total
             ? `📚 Talking in your ${vocab.total} studied words${vocab.review.length ? ` · bringing back ${vocab.review.length} to review` : ""}`
@@ -177,6 +238,7 @@ function renderChat(container, installed, params = {}) {
       start();
     };
     container.querySelector("#restart").onclick = () => start();
+    container.querySelector("#change-server").onclick = () => render(container, {});
     drawLog();
     drawControls();
   }
@@ -277,7 +339,7 @@ function renderChat(container, installed, params = {}) {
     drawLog();
     drawControls();
     try {
-      const res = await fetch(`${OLLAMA}/api/chat`, {
+      const res = await fetch(`${getOllamaBase()}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: AbortSignal.timeout(180000),
