@@ -4,7 +4,7 @@
 import { getState } from "./storage.js";
 import { learnerVocabulary, wordSet } from "./vocab.js";
 import { levelLabels } from "./data/assessment-data.js";
-import { speakGerman, speechRecognitionSupported, listenOnce, stopListening, micErrorMessage } from "./speech.js";
+import { speakGerman, speechRecognitionSupported, listenOnce, stopListening, micErrorMessage, usingRemoteMic } from "./speech.js";
 import { getOllamaBase, setOllamaBase, isRemoteOllama } from "./remote.js";
 import { navigate, showToast } from "./router.js";
 
@@ -270,7 +270,15 @@ function renderChat(container, installed, params = {}) {
       <div class="row" style="justify-content:center; margin: 8px 0 4px;">
         <button class="mic-btn ${listening ? "listening" : ""}" id="mic" ${speechRecognitionSupported() && !busy ? "" : "disabled"}>🎤</button>
       </div>
-      <p class="sub" style="text-align:center;">${listening ? "Listening… speak now" : speechRecognitionSupported() ? "Tap the mic and talk, or type below" : "Speech recognition isn't reliable in Safari — type below"}</p>
+      <p class="sub" style="text-align:center;">${
+        listening
+          ? usingRemoteMic()
+            ? "Recording… speak now, then tap the mic again to stop"
+            : "Listening… speak now"
+          : speechRecognitionSupported()
+          ? "Tap the mic and talk, or type below"
+          : "Speech recognition isn't reliable in Safari — type below"
+      }</p>
       <div class="text-fallback">
         <input type="text" id="typed" placeholder="Schreib etwas… (type in German)" autocomplete="off" />
         <button class="btn" id="send">Send</button>
@@ -280,14 +288,17 @@ function renderChat(container, installed, params = {}) {
     el.querySelector("#send").onclick = () => send(input.value);
     input.addEventListener("keydown", (e) => e.key === "Enter" && send(input.value));
     const mic = el.querySelector("#mic");
-    if (mic) mic.onclick = listen;
+    // Tap-to-stop: re-tapping while listening ends the recording immediately
+    // instead of starting a second one — the remote (Whisper) path has no
+    // live silence detection of its own to end it early.
+    if (mic) mic.onclick = () => (listening ? stopListening() : listen());
     input.focus();
   }
 
   async function listen() {
     listening = true;
     drawControls();
-    const { transcript, error } = await listenOnce({ timeoutMs: 10000 });
+    const { transcript, error } = await listenOnce();
     listening = false;
     drawControls();
     if (!transcript) {

@@ -7,6 +7,7 @@ import {
   stopListening,
   matchesExpected,
   micErrorMessage,
+  usingRemoteMic,
 } from "./speech.js";
 import { navigate, showToast } from "./router.js";
 
@@ -154,7 +155,15 @@ function renderPlay(container, dialogueId) {
       <div class="row" style="justify-content:center; margin: 8px 0 4px;">
         <button class="mic-btn ${listening ? "listening" : ""}" id="mic" ${speechRecognitionSupported() ? "" : "disabled"} title="Hold to speak">🎤</button>
       </div>
-      <p class="sub" style="text-align:center;">${listening ? "Listening… speak now" : speechRecognitionSupported() ? "Tap the mic and speak your reply in German" : "Speech recognition isn't reliable in Safari — type instead"}</p>
+      <p class="sub" style="text-align:center;">${
+        listening
+          ? usingRemoteMic()
+            ? "Recording… speak now, then tap the mic again to stop"
+            : "Listening… speak now"
+          : speechRecognitionSupported()
+          ? "Tap the mic and speak your reply in German"
+          : "Speech recognition isn't reliable in Safari — type instead"
+      }</p>
       <div class="text-fallback">
         <input type="text" id="typed" placeholder="Or type your reply in German…" />
         <button class="btn secondary" id="send">Send</button>
@@ -184,14 +193,17 @@ function renderPlay(container, dialogueId) {
 
     const micBtn = el.querySelector("#mic");
     if (micBtn && speechRecognitionSupported()) {
-      micBtn.onclick = () => startListening(node);
+      // Tap-to-stop: re-tapping while listening ends the recording immediately
+      // instead of starting a second one — important for the remote (Whisper)
+      // path, which has no live silence detection of its own.
+      micBtn.onclick = () => (listening ? stopListening() : startListening(node));
     }
   }
 
   async function startListening(node) {
     listening = true;
     renderControls(container.querySelector("#controls"));
-    const { transcript, alternatives, error } = await listenOnce({ timeoutMs: 8000 });
+    const { transcript, alternatives, error } = await listenOnce();
     listening = false;
     if (!transcript) {
       renderControls(container.querySelector("#controls"));

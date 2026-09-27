@@ -248,7 +248,12 @@ function pickAudioMimeType() {
   return "";
 }
 
-function listenRemote({ timeoutMs = 12000, recordMs = 5000 } = {}) {
+// recordMs is a safety cap, not the primary UX — the caller is expected to
+// call stopListening() as soon as the user is done talking (tap-to-stop),
+// since a fixed recording length either cuts off longer phrases mid-word or
+// wastes several seconds of silence after a short one. Both hurt Whisper's
+// accuracy: it has no live silence detection like the native recognizer does.
+function listenRemote({ timeoutMs = 15000, recordMs = 12000 } = {}) {
   return new Promise(async (resolve) => {
     const whisperUrl = getWhisperUrl();
     let stream;

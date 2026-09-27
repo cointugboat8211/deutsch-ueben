@@ -12,6 +12,7 @@ import {
   normalizeGerman,
   germanVoices,
   micErrorMessage,
+  usingRemoteMic,
 } from "./speech.js";
 import { navigate } from "./router.js";
 
@@ -195,13 +196,25 @@ function renderPlayer(container, lessonId) {
       const it = lesson.items[idx];
       const statusEl = container.querySelector(`[data-status-idx="${idx}"]`);
       const heardEl = container.querySelector(`[data-heard-idx="${idx}"]`);
+      let recording = false;
       btn.onclick = async () => {
+        // Tap-to-stop: a fixed recording length either cuts off longer words
+        // mid-way or wastes seconds waiting after a short one, and the remote
+        // (Whisper) path has no live silence detection to save it from that.
+        if (recording) {
+          stopListening();
+          return;
+        }
+        recording = true;
         btn.classList.add("listening");
+        btn.title = "Tap to stop";
         statusEl.textContent = "…";
         statusEl.title = "Listening";
-        heardEl.textContent = "Listening…";
-        const { transcript, alternatives, error } = await listenOnce({ timeoutMs: 6000 });
+        heardEl.textContent = usingRemoteMic() ? "Recording… say the word, then tap the mic again to stop." : "Listening…";
+        const { transcript, alternatives, error } = await listenOnce();
+        recording = false;
         btn.classList.remove("listening");
+        btn.title = "Say it";
         if (!transcript) {
           statusEl.textContent = "❌";
           statusEl.title = "Didn't catch anything";
@@ -498,10 +511,17 @@ function renderPlayer(container, lessonId) {
     });
 
     if (!mic) return;
+    let recording = false;
     mic.onclick = async () => {
+      if (recording) {
+        stopListening();
+        return;
+      }
+      recording = true;
       mic.classList.add("listening");
-      heardEl.textContent = "Listening…";
-      const { transcript, alternatives, error } = await listenOnce({ timeoutMs: 8000 });
+      heardEl.textContent = usingRemoteMic() ? "Recording… say it, then tap the mic again to stop." : "Listening…";
+      const { transcript, alternatives, error } = await listenOnce();
+      recording = false;
       mic.classList.remove("listening");
       if (!transcript) {
         heardEl.textContent = micErrorMessage(error);
