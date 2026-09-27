@@ -113,8 +113,24 @@ const SpeechRecognitionCtor =
     ? window.SpeechRecognition || window.webkitSpeechRecognition
     : null;
 
+// Safari (desktop and iOS) exposes `webkitSpeechRecognition` as a symbol, but
+// it does not reliably transcribe anything in practice — it runs, ends, and
+// reports nothing heard, which otherwise looks exactly like the user just
+// wasn't picked up. On iPhone this affects every browser (Chrome, Edge, etc.
+// all use Safari's engine there by Apple's policy), not just Safari itself.
+function isSafari() {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent;
+  // Every iOS browser (Safari, "Chrome"/CriOS, "Edge"/EdgiOS, ...) is required
+  // by Apple to use Safari's engine, so they all inherit the same broken
+  // recognition — unlike desktop, switching browsers on iOS doesn't help.
+  if (/iphone|ipad|ipod/i.test(ua)) return true;
+  // Desktop/Android: only genuine Safari is affected, not Chrome/Edge/Firefox.
+  return /^((?!chrome|chromium|crios|edg|edgios|opr|fxios|firefox|android).)*safari/i.test(ua);
+}
+
 export function speechRecognitionSupported() {
-  return !!SpeechRecognitionCtor;
+  return !!SpeechRecognitionCtor && !isSafari();
 }
 
 let activeRecognizer = null;
@@ -209,7 +225,7 @@ export function micErrorMessage(error) {
     case "start-failed":
       return "The microphone got stuck for a moment. Try again — if it keeps happening, reload the page.";
     case "unsupported":
-      return "Speech recognition isn't available in this browser. Chrome or Edge work best — or just type instead.";
+      return "Speech recognition isn't reliable in Safari (on iPhone, every browser uses Safari's engine). Use Chrome or Edge on a computer, or just type instead.";
     case "no-speech":
     case "timeout":
       return "Didn't hear anything. Tap the mic and try again, a little closer or louder.";

@@ -25,7 +25,7 @@ function renderList(container) {
   container.innerHTML = `
     <h1>Have a Conversation</h1>
     <p class="sub">Pick a scenario. Your browser will speak the German lines aloud; you reply out loud using your microphone (or type, if you'd rather).</p>
-    ${!speechRecognitionSupported() ? `<div class="card"><p><strong>Heads up:</strong> your browser doesn't support speech recognition, so you'll type your replies instead. Speech recognition currently works best in Chrome or Edge.</p></div>` : ""}
+    ${!speechRecognitionSupported() ? `<div class="card"><p><strong>Heads up:</strong> speech recognition isn't reliable in Safari (on iPhone, every browser uses Safari's engine), so you'll type your replies instead. It works well in Chrome or Edge on a computer.</p></div>` : ""}
     <div id="scenarios"></div>
   `;
 
@@ -154,7 +154,7 @@ function renderPlay(container, dialogueId) {
       <div class="row" style="justify-content:center; margin: 8px 0 4px;">
         <button class="mic-btn ${listening ? "listening" : ""}" id="mic" ${speechRecognitionSupported() ? "" : "disabled"} title="Hold to speak">🎤</button>
       </div>
-      <p class="sub" style="text-align:center;">${listening ? "Listening… speak now" : speechRecognitionSupported() ? "Tap the mic and speak your reply in German" : "Speech recognition isn't available in this browser"}</p>
+      <p class="sub" style="text-align:center;">${listening ? "Listening… speak now" : speechRecognitionSupported() ? "Tap the mic and speak your reply in German" : "Speech recognition isn't reliable in Safari — type instead"}</p>
       <div class="text-fallback">
         <input type="text" id="typed" placeholder="Or type your reply in German…" />
         <button class="btn secondary" id="send">Send</button>

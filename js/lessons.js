@@ -467,7 +467,7 @@ function renderPlayer(container, lessonId) {
   function renderSpeak(ex) {
     frame(ex, `${bigWithSpeaker(ex)}<p class="sub">${esc(ex.sub || "")}</p>
       <div class="row" style="justify-content:center;"><button class="mic-btn" id="mic" ${speechRecognitionSupported() ? "" : "disabled"}>🎤</button></div>
-      <p class="sub" id="heard" style="text-align:center;">${speechRecognitionSupported() ? "Tap the mic and say it in German" : "Speech recognition needs Chrome or Edge — type it instead"}</p>
+      <p class="sub" id="heard" style="text-align:center;">${speechRecognitionSupported() ? "Tap the mic and say it in German" : "Speech recognition isn't reliable in Safari — type it instead, or use Chrome/Edge on a computer"}</p>
       <div class="text-fallback" style="margin-top:14px;">
         <input type="text" id="typed-speak" placeholder="Or type it here instead…" autocomplete="off" />
         <button class="btn secondary" id="submit-speak">Check</button>

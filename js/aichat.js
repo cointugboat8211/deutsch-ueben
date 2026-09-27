@@ -293,7 +293,7 @@ function renderChat(container, installed, params = {}) {
       <div class="row" style="justify-content:center; margin: 8px 0 4px;">
         <button class="mic-btn ${listening ? "listening" : ""}" id="mic" ${speechRecognitionSupported() && !busy ? "" : "disabled"}>🎤</button>
       </div>
-      <p class="sub" style="text-align:center;">${listening ? "Listening… speak now" : speechRecognitionSupported() ? "Tap the mic and talk, or type below" : "Speech recognition needs Chrome or Edge — type below"}</p>
+      <p class="sub" style="text-align:center;">${listening ? "Listening… speak now" : speechRecognitionSupported() ? "Tap the mic and talk, or type below" : "Speech recognition isn't reliable in Safari — type below"}</p>
       <div class="text-fallback">
         <input type="text" id="typed" placeholder="Schreib etwas… (type in German)" autocomplete="off" />
         <button class="btn" id="send">Send</button>
