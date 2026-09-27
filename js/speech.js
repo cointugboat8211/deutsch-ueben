@@ -1,5 +1,7 @@
 // Speech utilities: German text-to-speech and speech-to-text, with fuzzy phrase matching.
 
+import { getWhisperUrl } from "./remote.js";
+
 let germanVoice = null;
 let voicesReady = false;
 const voiceListeners = [];
@@ -129,20 +131,44 @@ function isSafari() {
   return /^((?!chrome|chromium|crios|edg|edgios|opr|fxios|firefox|android).)*safari/i.test(ua);
 }
 
+// Whisper (running as a companion service alongside a *remote* Ollama
+// connection, e.g. on a Mac mini reached over Tailscale — see remote.js)
+// gives Safari/iOS a working microphone path even though the browser's own
+// recognition doesn't work there: record a short clip (audio capture itself
+// works fine everywhere) and send it off for transcription instead.
+function remoteListenAvailable() {
+  return !!getWhisperUrl() && !!navigator.mediaDevices?.getUserMedia && typeof window.MediaRecorder !== "undefined";
+}
+
 export function speechRecognitionSupported() {
-  return !!SpeechRecognitionCtor && !isSafari();
+  return (!!SpeechRecognitionCtor && !isSafari()) || remoteListenAvailable();
+}
+
+// True once a mic attempt will go over the network to a remote Whisper
+// server rather than the browser's own (instant, offline) recognition —
+// callers can use this to show "uploading/transcribing" instead of
+// "listening", since it takes a bit longer and needs a connection.
+export function usingRemoteMic() {
+  return (!SpeechRecognitionCtor || isSafari()) && remoteListenAvailable();
 }
 
 let activeRecognizer = null;
 
 /**
  * Listens once for German speech. Resolves with the recognized transcript
- * (empty string if nothing heard / an error occurred / timed out).
+ * (empty string if nothing heard / an error occurred / timed out). Picks
+ * whichever mechanism actually works on this browser: the native, instant
+ * recognizer where it's reliable, or a short recording sent to a remote
+ * Whisper server where it isn't (Safari/iOS — see remoteListenAvailable).
  */
-export function listenOnce({ timeoutMs = 8000 } = {}) {
-  return new Promise((resolve) => {
-    if (!SpeechRecognitionCtor) return resolve({ transcript: "", error: "unsupported" });
+export function listenOnce(opts = {}) {
+  if (SpeechRecognitionCtor && !isSafari()) return listenNative(opts);
+  if (remoteListenAvailable()) return listenRemote(opts);
+  return Promise.resolve({ transcript: "", error: "unsupported" });
+}
 
+function listenNative({ timeoutMs = 8000 } = {}) {
+  return new Promise((resolve) => {
     // Starting microphone capture while text-to-speech audio is still playing
     // (or queued) can hang or crash the tab on some systems — audio drivers
     // and virtual devices in particular don't always cope with playback and
@@ -210,6 +236,74 @@ function startRecognition(resolve, timeoutMs) {
     tryStart(false);
 }
 
+// Records a short, fixed-length clip and sends it to a remote Whisper server
+// for transcription. This is the Safari/iOS path: audio *capture* (getUserMedia
+// + MediaRecorder) works fine in every browser, it's specifically the live,
+// browser-built-in recognition that Safari can't do reliably.
+function pickAudioMimeType() {
+  const candidates = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"];
+  for (const c of candidates) {
+    if (window.MediaRecorder.isTypeSupported?.(c)) return c;
+  }
+  return "";
+}
+
+function listenRemote({ timeoutMs = 12000, recordMs = 5000 } = {}) {
+  return new Promise(async (resolve) => {
+    const whisperUrl = getWhisperUrl();
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      return resolve({ transcript: "", error: "not-allowed" });
+    }
+
+    const mimeType = pickAudioMimeType();
+    let recorder;
+    try {
+      recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    } catch {
+      stream.getTracks().forEach((t) => t.stop());
+      return resolve({ transcript: "", error: "unsupported" });
+    }
+    activeRecognizer = { stop: () => recorder.state !== "inactive" && recorder.stop() };
+
+    const chunks = [];
+    recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+
+    recorder.onstop = async () => {
+      activeRecognizer = null;
+      stream.getTracks().forEach((t) => t.stop());
+      if (!chunks.length) return resolve({ transcript: "", error: "no-speech" });
+      const blob = new Blob(chunks, { type: mimeType || chunks[0].type });
+      try {
+        const res = await fetch(whisperUrl, {
+          method: "POST",
+          headers: { "Content-Type": blob.type || "application/octet-stream" },
+          body: blob,
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+        if (!res.ok) return resolve({ transcript: "", error: "network" });
+        const data = await res.json();
+        if (!data.transcript) return resolve({ transcript: "", error: data.error || "no-speech" });
+        resolve({ transcript: data.transcript, alternatives: data.alternatives?.length ? data.alternatives : [data.transcript], error: null });
+      } catch {
+        resolve({ transcript: "", error: "network" });
+      }
+    };
+
+    try {
+      recorder.start();
+    } catch {
+      stream.getTracks().forEach((t) => t.stop());
+      return resolve({ transcript: "", error: "start-failed" });
+    }
+    setTimeout(() => {
+      if (recorder.state !== "inactive") recorder.stop();
+    }, recordMs);
+  });
+}
+
 // Turns a recognition error code into a message that actually explains what
 // to do next, instead of a generic "didn't catch that" for every failure.
 export function micErrorMessage(error) {
@@ -225,7 +319,7 @@ export function micErrorMessage(error) {
     case "start-failed":
       return "The microphone got stuck for a moment. Try again — if it keeps happening, reload the page.";
     case "unsupported":
-      return "Speech recognition isn't reliable in Safari (on iPhone, every browser uses Safari's engine). Use Chrome or Edge on a computer, or just type instead.";
+      return "Speech recognition isn't reliable in Safari (on iPhone, every browser uses Safari's engine). Connect a computer under AI Tutor to enable voice input here, use Chrome/Edge on a computer, or just type instead.";
     case "no-speech":
     case "timeout":
       return "Didn't hear anything. Tap the mic and try again, a little closer or louder.";

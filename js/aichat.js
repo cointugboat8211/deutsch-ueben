@@ -5,36 +5,13 @@ import { getState } from "./storage.js";
 import { learnerVocabulary, wordSet } from "./vocab.js";
 import { levelLabels } from "./data/assessment-data.js";
 import { speakGerman, speechRecognitionSupported, listenOnce, stopListening, micErrorMessage } from "./speech.js";
+import { getOllamaBase, setOllamaBase, isRemoteOllama } from "./remote.js";
 import { navigate, showToast } from "./router.js";
 
-const DEFAULT_OLLAMA = "http://localhost:11434";
-const OLLAMA_KEY = "deutschUeben_ollamaBase";
+export { getOllamaBase, setOllamaBase, isRemoteOllama };
+
 const PREFERRED_MODELS = ["qwen2.5:14b", "gemma3:12b", "gemma2:9b", "qwen2.5:7b", "llama3.1:8b", "qwen2.5:3b", "llama3.2:3b", "mistral"];
 const MODEL_KEY = "deutschUeben_model";
-
-// The Ollama server to talk to. Defaults to this device's own localhost (the
-// normal case: app and Ollama on the same computer). On a phone or any other
-// device, localhost means the PHONE, not your computer, so it can be pointed
-// instead at your computer's Tailscale address (see the setup screen) to use
-// the same free local AI tutor from anywhere your computer is reachable.
-export function getOllamaBase() {
-  try {
-    return (localStorage.getItem(OLLAMA_KEY) || DEFAULT_OLLAMA).replace(/\/$/, "");
-  } catch {
-    return DEFAULT_OLLAMA;
-  }
-}
-
-export function setOllamaBase(url) {
-  try {
-    if (!url || url === DEFAULT_OLLAMA) localStorage.removeItem(OLLAMA_KEY);
-    else localStorage.setItem(OLLAMA_KEY, url.trim().replace(/\/$/, ""));
-  } catch {}
-}
-
-export function isRemoteOllama() {
-  return getOllamaBase() !== DEFAULT_OLLAMA;
-}
 
 const TOPIC_LABELS = { lessons: "My lessons", free: "Free chat", intro: "Introductions", cafe: "At the café", shopping: "Shopping", directions: "Directions", daily: "Daily life" };
 
