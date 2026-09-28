@@ -19,6 +19,14 @@ export function germanVoices() {
   return voices.filter((v) => v.lang?.toLowerCase().replace("_", "-").startsWith("de")).sort((a, b) => rankVoice(b) - rankVoice(a));
 }
 
+// Every voice the browser reports, regardless of language — a diagnostic for
+// "I only see one German voice": lets the Voice page show what's actually on
+// the device (sometimes more German voices exist under an unexpected lang
+// code, or the device genuinely only has one installed).
+export function allSystemVoices() {
+  return window.speechSynthesis?.getVoices() || [];
+}
+
 function loadVoices() {
   const voices = window.speechSynthesis?.getVoices() || [];
   if (voices.length) {

@@ -1,5 +1,6 @@
 import {
   germanVoices,
+  allSystemVoices,
   getSelectedVoice,
   setSelectedVoice,
   getSpeechRate,
@@ -42,6 +43,8 @@ function draw(container) {
 
   const selected = getSelectedVoice();
   const rate = getSpeechRate();
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const everyVoice = allSystemVoices();
 
   container.innerHTML = `
     <button class="back-link" id="back">&larr; Back to dashboard</button>
@@ -76,12 +79,36 @@ function draw(container) {
            </div>`
     }
 
+    ${
+      allVoices.length <= 1
+        ? `<div class="card">
+             <h2>Only ${allVoices.length} German voice${allVoices.length === 1 ? "" : "s"} found</h2>
+             <p class="sub">${
+               isIOS
+                 ? "On iPhone, iOS ships with just one or two German voices by default — more are free to download."
+                 : "This device/browser is only reporting one to the app — more may be available to install."
+             }</p>
+             ${
+               isIOS
+                 ? `<p class="sub">Go to <strong>Settings → Accessibility → Spoken Content → Voices → Deutsch</strong> and download more — there's usually a male option (e.g. "Markus") alongside the female ones. Come back and reload this page afterward.</p>`
+                 : `<p class="sub">See "Getting a better voice" below.</p>`
+             }
+             <button class="btn ghost" id="toggle-diag" style="padding:6px 0;">Show every voice this browser reports (${everyVoice.length} total, any language)</button>
+             <div id="diag-list" hidden style="margin-top:10px;"></div>
+           </div>`
+        : ""
+    }
+
     <div class="card">
       <h2>Getting a better voice</h2>
       <p class="sub">Every voice you see above comes from your browser and operating system — the app just picks from what's installed. To get a genuinely natural-sounding one:</p>
       <ul class="sub" style="padding-left:20px; line-height:1.7;">
-        <li><strong>Easiest: use Microsoft Edge.</strong> It includes free "Online (Natural)" German voices that sound close to human. Needs an internet connection.</li>
-        <li><strong>Or add a Natural voice to Windows:</strong> Settings → Time &amp; language → Speech → Manage voices → Add voices → German. Look for one whose name says <em>Natural</em> — those are the modern neural voices; plain "German" entries are the older, more robotic kind. Microsoft's German Natural pair is usually <strong>Katja</strong> (female) and <strong>Conrad</strong> (male).</li>
+        ${
+          isIOS
+            ? `<li><strong>Settings → Accessibility → Spoken Content → Voices → Deutsch</strong> — download an additional voice (male and female options are usually both available). Enhanced/Premium quality voices sound far less robotic than the Default ones.</li>`
+            : `<li><strong>Easiest: use Microsoft Edge.</strong> It includes free "Online (Natural)" German voices that sound close to human. Needs an internet connection.</li>
+               <li><strong>Or add a Natural voice to Windows:</strong> Settings → Time &amp; language → Speech → Manage voices → Add voices → German. Look for one whose name says <em>Natural</em> — those are the modern neural voices; plain "German" entries are the older, more robotic kind. Microsoft's German Natural pair is usually <strong>Katja</strong> (female) and <strong>Conrad</strong> (male).</li>`
+        }
       </ul>
     </div>
   `;
@@ -92,6 +119,19 @@ function draw(container) {
       filter = btn.dataset.filter;
       draw(container);
     };
+  });
+  container.querySelector("#toggle-diag")?.addEventListener("click", (e) => {
+    const list = container.querySelector("#diag-list");
+    const show = list.hidden;
+    list.hidden = !show;
+    e.target.textContent = show
+      ? "Hide the full voice list"
+      : `Show every voice this browser reports (${everyVoice.length} total, any language)`;
+    if (show) {
+      list.innerHTML = everyVoice.length
+        ? everyVoice.map((v) => `<div class="sub" style="padding:2px 0;">${escapeHtml(v.name)} — <code>${escapeHtml(v.lang)}</code></div>`).join("")
+        : `<p class="sub">This browser reports no voices at all.</p>`;
+    }
   });
 
   const listEl = container.querySelector("#voice-list");
